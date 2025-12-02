@@ -1,5 +1,7 @@
+# styles.py
 """
-Hoja de estilos CSS centralizada para la aplicación.
+Hoja de estilos CSS centralizada.
+Se importa en el archivo principal para no ensuciar el código lógico.
 """
 
 STYLESHEET = """
@@ -42,8 +44,7 @@ STYLESHEET = """
 
     #InstructionLabel { background-color: white; border: 3px solid #5c98d6; border-radius: 30px; color: #34495e; font-size: 26px; font-weight: bold; padding: 15px 60px; }
     
-    /* --- BOTONES PRINCIPALES (Menú y Navegación) --- */
-    /* Este estilo es para los botones con Icono a la izquierda (Bienvenida, Selección, etc) */
+    /* --- BOTONES PRINCIPALES --- */
     #MainButton { 
         background-color: white; 
         color: #34495e; 
@@ -61,30 +62,23 @@ STYLESHEET = """
     #MainButton:hover { background-color: #e8e8e8; }
     #MainButton:disabled { background-color: #dcdcdc; color: #a0a0a0; border: 3px solid #a0a0a0; }
     
-    #StartStopButton[active="true"] { background-color: #e74c3c; color: white; border-color: #c0392b; }
-    #StartStopButton[active="true"]:hover { background-color: #ff6b5a; }
-    
-    /* --- BOTÓN DE CONTROL DE TERAPIA (Iniciar/Detener) --- */
-    /* Este estilo es específico para el botón de acción que quieres centrado */
     #StartStopButton { 
         background-color: white; 
         color: #34495e; 
         font-size: 28px; 
         font-weight: bold;
         border: 3px solid black; 
-        border-radius: 40px;   /* Bordes redondos (mitad de la altura 80px) */
+        border-radius: 40px; 
         outline: none; 
-        text-align: center;    /* Texto totalmente centrado */
-        padding: 5px;          /* Padding uniforme */
+        text-align: center;      
+        padding: 5px;
     }
-    
     #StartStopButton:hover { background-color: #e8e8e8; }
     #StartStopButton:disabled { background-color: #dcdcdc; color: #a0a0a0; border: 3px solid #a0a0a0; }
-    
-    /* Estado Activo (Cuando está en Rojo/Detener) */
+
     #StartStopButton[active="true"] { background-color: #e74c3c; color: white; border-color: #c0392b; }
     #StartStopButton[active="true"]:hover { background-color: #ff6b5a; }
-
+    
     /* --- BOTONES SECUNDARIOS --- */
     #SecondaryButton { 
         background-color: white; 
@@ -104,8 +98,47 @@ STYLESHEET = """
     #UndoButton, #ExitMenuButton { background-color: #f1c40f; color: black; font-size: 16px; font-weight: bold; border: 2px solid #c09d0b; border-radius: 20px; padding: 5px; outline: none; }
     #UndoButton:hover, #ExitMenuButton:hover { background-color: #f39c12; }
     
-    #ShutdownButton { background-color: transparent; border: none; border-radius: 25px; }
-    #ShutdownButton[active="true"] { background-color: rgba(231, 76, 60, 0.5); }
+    /* --- BOTÓN FLOTANTE DE PARO (Original) --- */
+    #ShutdownButton { 
+        background-color: transparent; 
+        border: none; 
+        border-radius: 25px; 
+    }
+    #ShutdownButton:hover { 
+        background-color: rgba(192, 57, 43, 0.1); 
+    }
+    #ShutdownButton[active="true"] { 
+        background-color: rgba(231, 76, 60, 0.8); /* Fondo rojo al activarse */
+        border: 2px solid #c0392b;
+    }
+
+    /* Etiqueta flotante junto al botón */
+    #ShutdownLabel {
+        color: red; 
+        font-weight: bold; 
+        font-size: 20px; 
+        background-color: white;
+        border: 2px solid red;
+        border-radius: 10px;
+        padding: 8px 15px; 
+        min-width: 150px; 
+        qproperty-alignment: AlignCenter;
+    }
+
+    /* --- CORTINA DE BLOQUEO (Overlay) --- */
+    #EmergencyOverlay {
+        background-color: rgba(255, 255, 255, 0.6); /* Velo blanco semitransparente */
+    }
+    
+    #EmergencyMessage {
+        color: #c0392b;
+        font-size: 30px;
+        font-weight: bold;
+        background-color: white;
+        border: 4px solid #c0392b;
+        border-radius: 20px;
+        padding: 30px;
+    }
     
     #ArrowButton { background-color: transparent; border: 3px solid black; border-radius: 40px; outline: none; }
     #ArrowButton:pressed { background-color: #e0e0e0; }
@@ -129,46 +162,4 @@ STYLESHEET = """
         background-color: white;
     }
     QProgressBar::chunk { background-color: #5c98d6; border-radius: 12px; }
-
-    /* --- BOTÓN FLOTANTE DE PARO (Original) --- */
-    #ShutdownButton { 
-        background-color: transparent; 
-        border: none; 
-        border-radius: 25px; 
-    }
-    #ShutdownButton:hover { 
-        background-color: rgba(192, 57, 43, 0.1); 
-    }
-    #ShutdownButton[active="true"] { 
-        background-color: rgba(231, 76, 60, 0.8); /* Fondo rojo al activarse */
-        border: 2px solid #c0392b;
-    }
-
-    /* Etiqueta flotante junto al botón */
-    #ShutdownLabel {
-        color: red; 
-        font-weight: bold; 
-        font-size: 20px; 
-        background-color: white;
-        border: 2px solid red;
-        border-radius: 10px;
-        padding: 8px 15px; /* Aumentado para que el texto no toque los bordes */
-        min-width: 150px;  /* Ancho mínimo para asegurar visibilidad */
-        qproperty-alignment: AlignCenter;
-    }
-
-    /* --- CORTINA DE BLOQUEO (Overlay) --- */
-    #EmergencyOverlay {
-        background-color: rgba(255, 255, 255, 0.6); /* Velo blanco semitransparente */
-    }
-    
-    #EmergencyMessage {
-        color: #c0392b;
-        font-size: 30px;
-        font-weight: bold;
-        background-color: white;
-        border: 4px solid #c0392b;
-        border-radius: 20px;
-        padding: 30px;
-    }
 """

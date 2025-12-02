@@ -5,6 +5,10 @@
 import sys
 import time
 import math
+import os
+
+# <--- NUEVO: Obligar a usar la ruta del archivo actual como base
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     import pigpio
@@ -19,112 +23,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton, QLabel, QWi
 from PyQt5.QtCore import (Qt, QSize, QTimer, QObject, pyqtSignal, QThread, pyqtSlot)
 from PyQt5.QtGui import (QPixmap, QIcon, QFont, QMovie)
 
-STYLESHEET = """
-    /* --- FONDOS DE PÁGINA (Añadido LegPositioningPage) --- */
-    #MainWindow, #WelcomePage, #LoadingPage, #CalibratedPage, #RehabSelectionPage, 
-    #FlexExtPage, #AbdAddPage, #TherapySummaryPage, #LegPositioningPage { 
-        background-color: #f0f2f5; 
-    }
-    
-    #TitleLabel, #TherapyTitleLabel { background-color: #34495e; color: white; font-size: 36px; font-weight: bold; padding: 15px 30px; border-radius: 20px; }
-    #StatusLabel, #SectionTitleLabel, #SummaryTitleLabel { font-size: 24px; font-weight: bold; color: #34495e; }
-    
-    /* --- ADVERTENCIAS Y PARO --- */
-    #EStopLabel { color: #e74c3c; font-size: 18px; font-weight: bold; background-color: #fadbd8; border: 2px solid #e74c3c; border-radius: 10px; padding: 10px; }
-    
-    #WarningLabel { 
-        color: #e67e22; 
-        font-weight: bold; 
-        font-size: 20px; 
-        border: 2px solid #e67e22;
-        border-radius: 10px;
-        padding: 10px;
-        background-color: #fdf2e9;
-    }
+from styles import STYLESHEET
 
-    #JogStatusLabel { font-size: 18px; font-weight: bold; color: #7f8c8d; font-style: italic; }
-    #JogStatusLabel[active="true"] { color: #3498db; font-style: normal; }
-    
-    /* --- CAJAS DE TEXTO --- */
-    #SummaryBox { background-color: white; border: 3px solid #34495e; border-radius: 25px; padding: 30px; font-size: 22px; color: #2c3e50; }
-    
-    #InstructionBox { 
-        background-color: white; 
-        border: 2px solid #bdc3c7; 
-        border-radius: 15px; 
-        padding: 20px; 
-        font-size: 20px; 
-        color: #2c3e50;
-    }
-
-    #InstructionLabel { background-color: white; border: 3px solid #5c98d6; border-radius: 30px; color: #34495e; font-size: 26px; font-weight: bold; padding: 15px 60px; }
-    
-    /* --- BOTONES PRINCIPALES --- */
-    #MainButton, #StartStopButton { 
-        background-color: white; 
-        color: #34495e; 
-        font-size: 28px; 
-        border: 3px solid black; 
-        border-radius: 45px; 
-        outline: none; 
-        text-align: left;      
-        padding-left: 30px;
-        padding-right: 20px;   
-        padding-top: 20px;
-        padding-bottom: 20px;
-        qproperty-iconSize: 40px 40px; 
-    }
-    #MainButton:hover, #StartStopButton:hover { background-color: #e8e8e8; }
-    #MainButton:disabled, #StartStopButton:disabled { background-color: #dcdcdc; color: #a0a0a0; border: 3px solid #a0a0a0; }
-    
-    #StartStopButton[active="true"] { background-color: #e74c3c; color: white; border-color: #c0392b; }
-    #StartStopButton[active="true"]:hover { background-color: #ff6b5a; }
-    
-    /* --- BOTONES SECUNDARIOS --- */
-    #SecondaryButton { 
-        background-color: white; 
-        color: #34495e; 
-        font-size: 22px; 
-        border: 3px solid black; 
-        border-radius: 30px; 
-        padding: 10px; 
-        outline: none; 
-    }
-    #SecondaryButton:hover { background-color: #e8e8e8; }
-    #SecondaryButton:disabled { background-color: #dcdcdc; color: #a0a0a0; border: 3px solid #a0a0a0; }
-    
-    #SwitchTherapyButton { background-color: #2980b9; color: white; font-size: 16px; font-weight: bold; border: 2px solid #2471a3; border-radius: 20px; padding: 5px; outline: none; }
-    #SwitchTherapyButton:hover { background-color: #3498db; }
-    
-    #UndoButton, #ExitMenuButton { background-color: #f1c40f; color: black; font-size: 16px; font-weight: bold; border: 2px solid #c09d0b; border-radius: 20px; padding: 5px; outline: none; }
-    #UndoButton:hover, #ExitMenuButton:hover { background-color: #f39c12; }
-    
-    #ShutdownButton { background-color: transparent; border: none; border-radius: 25px; }
-    #ShutdownButton[active="true"] { background-color: rgba(231, 76, 60, 0.5); }
-    
-    #ArrowButton { background-color: transparent; border: 3px solid black; border-radius: 40px; outline: none; }
-    #ArrowButton:pressed { background-color: #e0e0e0; }
-    #ArrowButton:disabled { background-color: #f0f0f0; border-color: #b0b0b0; }
-    
-    #KeypadDisplay { background-color: white; border: 2px solid black; font-size: 24px; font-weight: bold; color: black; padding: 10px; qproperty-alignment: 'AlignRight | AlignVCenter'; }
-    #NumberButton, #NumberButtonRed, #NumberButtonGreen { font-size: 24px; font-weight: bold; height: 50px; border: 1px solid #cccccc; background-color: white; outline: none; }
-    #NumberButtonRed { background-color: #ffcccc; }
-    #NumberButtonGreen { background-color: #ccffcc; }
-    
-    #FeedbackLabel, #FinishedLabel { font-size: 18px; color: #27ae60; font-weight: bold; }
-    
-    #TherapyStatusLabel { font-size: 22px; font-weight: bold; color: #c0392b; }
-    #RepetitionCounterLabel { font-size: 22px; color: #c0392b; }
-
-    QProgressBar { 
-        border: 2px solid grey; 
-        border-radius: 15px; 
-        text-align: center; 
-        height: 30px; 
-        background-color: white;
-    }
-    QProgressBar::chunk { background-color: #5c98d6; border-radius: 12px; }
-"""
 # --- CONSTANTES DE HARDWARE ---
 ENABLE_ACTIVO = 0   
 ENABLE_INACTIVO = 1
@@ -518,7 +418,7 @@ class RehabilitationApp(QMainWindow):
         self.stacked_widget.addWidget(self.leg_positioning_page)   # 7
 
         # Botón de Paro Software
-        self.shutdown_button = QPushButton(self.main_container)
+        self.shutdown_button = QPushButton(self)
         self.shutdown_button.setObjectName("ShutdownButton")
         self.shutdown_button.setIcon(QIcon("icons/shutdown_icon.png"))
         self.shutdown_button.setIconSize(QSize(50, 50)); self.shutdown_button.setFixedSize(QSize(60, 60))
@@ -526,10 +426,18 @@ class RehabilitationApp(QMainWindow):
         self.shutdown_button.clicked.connect(self.toggle_software_estop)
         self.shutdown_button.raise_()
         
-        self.shutdown_label = QLabel("Botón de paro activado", self.main_container)
+        self.shutdown_label = QLabel("Botón de paro activado", self)
         self.shutdown_label.setStyleSheet("color: red; font-weight: bold; font-size: 20px; background-color: transparent;")
         self.shutdown_label.adjustSize(); self.shutdown_label.hide(); self.shutdown_label.raise_()
         
+        self.overlay_blocker = QWidget(self)
+        self.overlay_blocker.setObjectName("EmergencyOverlay")
+        self.overlay_blocker.hide()
+        
+        self.overlay_msg = QLabel("¡PARADA DE EMERGENCIA!\nSISTEMA DETENIDO", self.overlay_blocker)
+        self.overlay_msg.setObjectName("EmergencyMessage")
+        self.overlay_msg.setAlignment(Qt.AlignCenter)
+
         self._setup_hardware_thread()
 
     def _setup_hardware_thread(self):
@@ -556,9 +464,10 @@ class RehabilitationApp(QMainWindow):
         self.worker_thread.start()
 
     def _update_emergency_state(self):
+        """Actualiza estado de emergencia (Lógica original + Overlay visual)."""
         is_emergency = self.physical_estop_active or self.software_estop_active
         
-        # Deshabilitar controles
+        # Deshabilitar controles (LÓGICA ORIGINAL)
         self.flex_button.setEnabled(not is_emergency)
         self.ext_button.setEnabled(not is_emergency)
         self.abd_button.setEnabled(not is_emergency)
@@ -570,26 +479,34 @@ class RehabilitationApp(QMainWindow):
             if self.therapy_in_progress:
                 self.stop_therapy_session(finished=False)
             
-            # Limpiar estados de carga/movimiento
+            # --- NUEVO: Mostrar Overlay ---
+            self.overlay_blocker.show()
+            self.overlay_blocker.raise_()
+            self.shutdown_button.raise_() # Botón siempre arriba
+            self.shutdown_label.raise_()
+            # ------------------------------
+
+            # Limpieza de estados (LÓGICA ORIGINAL)
             if self.system_state in ["RESETTING_ROTATIONAL", "RESETTING_LINEAR", "CALIBRATING"]:
                 self.system_state = "IDLE"
                 self.gears_movie.stop()
-                # Detener timer si existiera
                 if hasattr(self, 'loading_timer') and self.loading_timer.isActive():
                     self.loading_timer.stop()
-
-            self.estop_warning_label.show()
             
-            # Cambiar texto botones Welcome
+            # Textos Welcome (LÓGICA ORIGINAL)
             self.pos_leg_button.setEnabled(False)
             self.pos_leg_button.setText("SISTEMA")
             self.rehab_button.setEnabled(False)
             self.rehab_button.setText("DETENIDO")
             
-            # SIEMPRE ir a la página 0 (Welcome)
-            self.stacked_widget.setCurrentIndex(0)
+            # --- CRÍTICO: Regresar a Inicio ---
+            if self.stacked_widget.currentIndex() != 0:
+                self.stacked_widget.setCurrentIndex(0)
+            # -----------------------------------------------------------
         else:
-            self.estop_warning_label.hide()
+            # Ocultar Overlay
+            self.overlay_blocker.hide()
+            
             self.pos_leg_button.setEnabled(True)
             self.pos_leg_button.setText("Posicionar pierna en mecanismo")
             self.rehab_button.setEnabled(True)
@@ -604,10 +521,16 @@ class RehabilitationApp(QMainWindow):
         self.trigger_halt_signal.emit(self.software_estop_active)
         
         self.shutdown_button.setProperty("active", self.software_estop_active)
-        self.shutdown_button.style().unpolish(self.shutdown_button); self.shutdown_button.style().polish(self.shutdown_button)
+        self.shutdown_button.style().unpolish(self.shutdown_button)
+        self.shutdown_button.style().polish(self.shutdown_button)
         
-        if self.software_estop_active: self.shutdown_label.show()
-        else: self.shutdown_label.hide()
+        if self.software_estop_active: 
+            self.shutdown_label.show()
+            self.shutdown_label.adjustSize() # Ajustar tamaño al texto
+            self.shutdown_label.raise_()     # Poner al frente
+        else: 
+            self.shutdown_label.hide()
+            
         self._update_emergency_state()
 
     # --- PÁGINA 7: POSICIONAMIENTO DE PIERNA (NUEVA) ---
@@ -678,10 +601,10 @@ class RehabilitationApp(QMainWindow):
         p = QWidget(); p.setObjectName("WelcomePage"); l = QVBoxLayout(p)
         l.addWidget(self.create_header(p))
         hl = QHBoxLayout(); vl = QVBoxLayout()
-        self.estop_warning_label = QLabel("PARADA DE EMERGENCIA ACTIVA"); self.estop_warning_label.setObjectName("EStopLabel"); self.estop_warning_label.hide()
         
-        lbl_pre_warn = QLabel("Para comenzar terapia, la pierna ya debe estar posicionada en el mecanismo")
+        lbl_pre_warn = QLabel("Para comenzar terapia, la pierna ya debe\nestar posicionada en el mecanismo")
         lbl_pre_warn.setStyleSheet("color: #7f8c8d; font-size: 18px; font-style: italic; margin-bottom: 10px;")
+        lbl_pre_warn.setAlignment(Qt.AlignCenter)
         
         self.pos_leg_button = QPushButton("Posicionar pierna en mecanismo")
         self.pos_leg_button.setObjectName("MainButton"); self.pos_leg_button.setFixedSize(475, 90)
@@ -694,7 +617,7 @@ class RehabilitationApp(QMainWindow):
         self.rehab_button.clicked.connect(self.start_rehabilitation)
 
         img = QLabel(); img.setPixmap(QPixmap("icons/fisioterapeuta.png").scaled(300,300,Qt.KeepAspectRatio))
-        vl.addStretch(); vl.addWidget(self.estop_warning_label, 0, Qt.AlignHCenter); vl.addSpacing(10); vl.addWidget(lbl_pre_warn, 0, Qt.AlignHCenter)
+        vl.addStretch(); vl.addSpacing(10); vl.addWidget(lbl_pre_warn, 0, Qt.AlignHCenter)
         vl.addWidget(self.pos_leg_button, 0, Qt.AlignHCenter); vl.addSpacing(20); vl.addWidget(self.rehab_button, 0, Qt.AlignHCenter); vl.addStretch()
         hl.addStretch(); hl.addLayout(vl); hl.addSpacing(50); hl.addWidget(img); hl.addStretch(); l.addLayout(hl)
         return p
@@ -715,9 +638,35 @@ class RehabilitationApp(QMainWindow):
 
     def create_calibrated_page(self):
         p = QWidget(); p.setObjectName("CalibratedPage"); l = QVBoxLayout(p)
-        sl = QLabel("SISTEMA CALIBRADO"); sl.setObjectName("StatusLabel"); cl = QLabel(); cl.setPixmap(QPixmap("icons/checkmark_icon.png").scaled(40,40,Qt.KeepAspectRatio))
-        btn = QPushButton("Comenzar Sesión"); btn.setObjectName("MainButton"); btn.setFixedSize(450,90); btn.setStyleSheet("text-align: center; padding-left: 0px;");  btn.clicked.connect(lambda: self.start_go_to_start_sequence())
-        vl = QVBoxLayout(); hl = QHBoxLayout(); hl.addStretch(); hl.addWidget(sl); hl.addWidget(cl); hl.addStretch(); vl.addStretch(); vl.addLayout(hl); vl.addSpacing(40); vl.addWidget(btn, 0, Qt.AlignHCenter); vl.addStretch(); l.addWidget(self.create_header(p)); l.addLayout(vl); return p
+        
+        # 1. Crear los elementos
+        sl = QLabel("SISTEMA CALIBRADO"); sl.setObjectName("StatusLabel")
+        sl.setAlignment(Qt.AlignCenter) # Asegurar texto centrado
+        
+        cl = QLabel() 
+        cl.setPixmap(QPixmap("icons/checkmark_icon.png").scaled(150,150,Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        cl.setAlignment(Qt.AlignCenter)
+
+        btn = QPushButton("Comenzar Sesión") 
+        btn.setObjectName("MainButton")
+        btn.setFixedSize(450,90) 
+        btn.setStyleSheet("text-align: center; padding-left: 0px;")
+        btn.clicked.connect(lambda: self.start_go_to_start_sequence())
+        
+        # 2. Organizar VERTICALMENTE (Icono -> Texto -> Botón)
+        vl = QVBoxLayout()
+        vl.addStretch()
+        vl.addWidget(cl, 0, Qt.AlignHCenter)  # Icono Arriba
+        vl.addSpacing(20)                     # Espacio
+        vl.addWidget(sl, 0, Qt.AlignHCenter)  # Texto Abajo
+        vl.addSpacing(60)
+        vl.addWidget(btn, 0, Qt.AlignHCenter) # Botón al final
+        vl.addStretch()
+        
+        # 3. Finalizar
+        l.addWidget(self.create_header(p))
+        l.addLayout(vl)
+        return p
 
     def create_rehab_selection_page(self):
         p = QWidget(); p.setObjectName("RehabSelectionPage"); l = QVBoxLayout(p); l.addWidget(self.create_header(p)); l.addSpacing(30)
@@ -1270,10 +1219,25 @@ class RehabilitationApp(QMainWindow):
     
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        btn_x = 20; btn_y = self.height() - self.shutdown_button.height() - 20
+        
+        # 1. Ajustar el overlay al tamaño completo
+        self.overlay_blocker.resize(self.width(), self.height())
+        # Centrar mensaje
+        msg_w, msg_h = 600, 200
+        self.overlay_msg.setGeometry((self.width()-msg_w)//2, (self.height()-msg_h)//2, msg_w, msg_h)
+
+        # 2. Posicionar botón flotante (LÓGICA ORIGINAL)
+        btn_x = 20
+        btn_y = self.height() - self.shutdown_button.height() - 20
         self.shutdown_button.move(btn_x, btn_y)
-        label_x = btn_x + self.shutdown_button.width() + 15; label_y = btn_y + (self.shutdown_button.height() - self.shutdown_label.height()) // 2
+        
+        # 3. Etiqueta y elevación (Para que se vea ENCIMA de la cortina)
+        label_x = btn_x + self.shutdown_button.width() + 15
+        label_y = btn_y + (self.shutdown_button.height() - self.shutdown_label.height()) // 2
         self.shutdown_label.move(label_x, label_y)
+        
+        self.shutdown_button.raise_()
+        self.shutdown_label.raise_()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape: self.close()
