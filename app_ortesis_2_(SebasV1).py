@@ -54,7 +54,7 @@ VELOCIDAD_HZ_ROTACIONAL_CALIBRATION = 40
 VELOCIDAD_HZ_ROTACIONAL_TERAPIA = 40
 VELOCIDAD_HZ_ROTACIONAL_JOG = 40
 
-MAX_GRADOS_ABD = 40.0
+MAX_GRADOS_ABD = 45.0
 
 
 class HardwareController(QObject):
@@ -132,6 +132,7 @@ class HardwareController(QObject):
             
             # Configurar Filtro de Ruido (Glitch Filter)
             # Ignora cambios de señal menores a 1000 microsegundos (1ms)
+            # Esto evita falsos positivos por vibración o inducción eléctrica.
             self.pi.set_glitch_filter(pin, 1000)
         
         # Configurar Interrupciones para el Botón de Paro Físico
@@ -145,20 +146,18 @@ class HardwareController(QObject):
 
     @pyqtSlot()
     def reset_internal_state(self):
-        """
-        Reinicia SOLO las banderas de movimiento activo.
-        NO borra las posiciones (eso solo pasa al cerrar la app o recalibrar).
-        """
-        print("[Hardware] Deteniendo movimientos activos por paro de emergencia.")
-        
-        # Detener procesos activos
+        """Reinicia las variables de posición y estado tras un paro de emergencia."""
+        print("[Hardware] RESET DE ESTADO: Sistema descalibrado.")
         self.is_calibrating = False
         self.is_moving_steps = False
         self.is_jogging = False
         self.calibration_step = ""
         
-        # NO borrar las posiciones guardadas ni el cero de terapia
-        # Las posiciones se mantienen para que el cálculo de pasos sea correcto
+        # Se pierden las referencias de posición
+        self.posicion_rotacional = 0
+        self.posicion_lineal = 0
+        self.cero_terapia_rotacional = 0
+        self.cero_terapia_lineal = 0
 
     def _physical_estop_pressed(self, gpio, level, tick):
         print("!!! E-STOP ACTIVADO (Físico) !!!")
@@ -251,12 +250,12 @@ class HardwareController(QObject):
                 time.sleep(0.2)
                 
                 # Invertir dirección para despegar del sensor (Rebote controlado)
-                #dir_despegue = SENTIDO_HOMING_LINEAL ^ 1 
-                #self.pi.write(LIN_DIR_PIN, dir_despegue) 
-                #time.sleep(0.1)
+                dir_despegue = SENTIDO_HOMING_LINEAL ^ 1 
+                self.pi.write(LIN_DIR_PIN, dir_despegue) 
+                time.sleep(0.1)
                 
-                #self.pi.hardware_PWM(LIN_PUL_PIN, 1000, 500000)
-                #time.sleep(0.5)
+                self.pi.hardware_PWM(LIN_PUL_PIN, 1000, 500000)
+                time.sleep(0.5)
                 self.pi.hardware_PWM(LIN_PUL_PIN, 0, 0)
 
             self.posicion_lineal = 0
@@ -435,14 +434,10 @@ class HardwareController(QObject):
 
         # 2. Modo Calibración
         if self.is_calibrating:
-            if self.calibration_step == 'rotational':
-                if self.pi.read(ROT_LIMIT_IN_PIN) == SENSORES_NIVEL_ACTIVO:
-                    print("[Worker] Sensor ROTACIONAL detectado en calibración.")
-                    self._finish_calibration_step()
-            elif self.calibration_step == 'linear':
-                if self.pi.read(LIN_LIMIT_OUT_PIN) == SENSORES_NIVEL_ACTIVO:
-                    print("[Worker] Sensor LINEAL detectado en calibración.")
-                    self._finish_calibration_step()
+            if self.calibration_step == 'rotational' and (self.pi.read(ROT_LIMIT_IN_PIN) == SENSORES_NIVEL_ACTIVO):
+                self._finish_calibration_step()
+            elif self.calibration_step == 'linear' and (self.pi.read(LIN_LIMIT_OUT_PIN) == SENSORES_NIVEL_ACTIVO):
+                self._finish_calibration_step()
             return
         
         # 3. Modo Jogging (Manual)
@@ -714,11 +709,6 @@ class RehabilitationApp(QMainWindow):
             self.system_state = "IDLE"
             self.gears_movie.stop()
             
-            self.worker.posicion_lineal = 0          
-            self.worker.posicion_rotacional = 0         
-            self.worker.cero_terapia_lineal = 0       
-            self.worker.cero_terapia_rotacional = 0   
-
             # Borrar límites guardados
             self.flexion_limite_saved = False
             self.extension_limite_saved = False
@@ -1904,102 +1894,73 @@ class RehabilitationApp(QMainWindow):
             self.therapy_status_label.setStyleSheet("color: #c0392b;")
 
     def execute_therapy_step(self):
-        """Máquina de estados con DEBUGGING ACTIVADO."""
-        if not self.therapy_in_progress: 
-            return
-        if self.physical_estop_active or self.software_estop_active: 
-            return
-
-        print(f"--- DEBUG: Entrando a execute_therapy_step | Estado: {self.therapy_state} ---")
+        """Máquina de estados principal para la secuencia de movimiento."""
+        if not self.therapy_in_progress: return
+        if self.physical_estop_active or self.software_estop_active: return
 
         # --- TERAPIA FLEXIÓN / EXTENSIÓN (LINEAL) ---
         if "Flexión" in self.current_therapy_type:
             
             if self.therapy_state == "STARTING" or self.therapy_state == "PAUSE_BEFORE_HOME_LINEAR":
-                # Paso 1: Ir hacia la EXTENSIÓN
+                # Paso 1: Ir hacia la EXTENSIÓN (Límite guardado)
                 target = self.extension_limite_pasos
                 current = self.worker.posicion_lineal
                 diff = target - current
                 
-                print(f"DEBUG [STARTING]: Límite Extensión={target}, Actual={current}")
-                print(f"DEBUG [STARTING]: Moviendo {diff} pasos hacia Extensión.")
-                
                 self.therapy_state = "MOVING_TO_EXTENSION"
-                # Usamos la velocidad definida en constantes
-                self.trigger_move_steps.emit('lineal', int(diff), VELOCIDAD_HZ_LINEAL_TERAPIA)
+                # Velocidad un poco más lenta para terapia si se desea, o usar la constante
+                self.trigger_move_steps.emit('lineal', diff, VELOCIDAD_HZ_LINEAL_TERAPIA)
                 
             elif self.therapy_state == "MOVING_TO_EXTENSION":
-                # Llegó a la extensión
-                print("DEBUG [MOVING_TO_EXT]: Llegada confirmada. Iniciando pausa de 1.5s.")
+                # Llegó a la extensión, pausa breve
                 self.therapy_state = "PAUSE_AT_EXTENSION"
-                QTimer.singleShot(1500, self.execute_therapy_step) 
+                # Esperar 1.5s antes de regresar (Simulado por QTimer en on_movement_finished)
                 
             elif self.therapy_state == "PAUSE_AT_EXTENSION":
-                # Paso 2: Regresar a FLEXIÓN
-                target = self.flexion_limite_pasos 
+                # Paso 2: Regresar a FLEXIÓN (Cero lógico o límite flexión)
+                # Usamos el cero de terapia como base segura
+                target = self.worker.cero_terapia_lineal 
                 current = self.worker.posicion_lineal
                 diff = target - current
                 
-                print(f"DEBUG [PAUSE_EXT]: Límite Flexión={target}, Actual={current}")
-                print(f"DEBUG [PAUSE_EXT]: Moviendo {diff} pasos hacia Flexión.")
-                
                 self.therapy_state = "MOVING_TO_FLEXION"
-                self.trigger_move_steps.emit('lineal', int(diff), VELOCIDAD_HZ_LINEAL_TERAPIA)
+                self.trigger_move_steps.emit('lineal', diff, VELOCIDAD_HZ_LINEAL_TERAPIA)
                 
             elif self.therapy_state == "MOVING_TO_FLEXION":
-                # Llegó a flexión
+                # Terminó una repetición completa
                 self.current_rep_count += 1
-                print(f"DEBUG [MOVING_TO_FLEX]: Repetición {self.current_rep_count}/{self.current_therapy_reps} completada.")
                 self.rep_counter_label.setText(f"Repetición: {self.current_rep_count} de {self.current_therapy_reps}")
                 
                 if self.current_rep_count >= self.current_therapy_reps:
-                    print("DEBUG: Rutina finalizada.")
                     self.therapy_state = "FINISHING"
-                    self.on_movement_finished(True) 
+                    self.on_movement_finished(True) # Auto-llamada para finalizar
                 else:
-                    print("DEBUG: Preparando siguiente repetición (Pausa 1.5s).")
                     self.therapy_state = "PAUSE_BEFORE_HOME_LINEAR"
-                    QTimer.singleShot(1500, self.execute_therapy_step)
         
-# --- TERAPIA ABDUCCIÓN / ADUCCIÓN (ROTACIONAL) ---
+        # --- TERAPIA ABDUCCIÓN / ADUCCIÓN (ROTACIONAL) ---
         else:
             if self.therapy_state == "STARTING" or self.therapy_state == "PAUSE_BEFORE_HOME_ROTATIONAL":
-                # Paso 1: Ir hacia la ADUCCIÓN (Límite 1 guardado)
-                # NOTA: Verifica si tu 'Límite 1' es Aducción o Abducción según tu lógica de guardado.
-                # Asumo que Adduction es el límite inicial al que vas primero.
-                target = self.adduction_limite_pasos
-                current = self.worker.posicion_rotacional
-                diff = target - current
-                
-                print(f"DEBUG [ROT]: Moviendo {diff} pasos hacia Aducción.")
-                
-                self.therapy_state = "MOVING_TO_ADDUCTION"
-                self.trigger_move_steps.emit('rotacional', int(diff), VELOCIDAD_HZ_ROTACIONAL_TERAPIA)
-                
-            elif self.therapy_state == "MOVING_TO_ADDUCTION":
-                # Llegó a Aducción
-                self.therapy_state = "PAUSE_AT_ADDUCTION"
-                # Esperar 1.5s antes de regresar
-                QTimer.singleShot(1500, self.execute_therapy_step)
-                
-            elif self.therapy_state == "PAUSE_AT_ADDUCTION":
-                # Paso 2: Ir hacia ABDUCCIÓN (Límite 2 guardado)
+                # Paso 1: Ir hacia ABDUCCIÓN (Abrir brazo)
                 target = self.abduction_limite_pasos
                 current = self.worker.posicion_rotacional
                 diff = target - current
                 
-                print(f"DEBUG [ROT]: Moviendo {diff} pasos hacia Abducción.")
-                
                 self.therapy_state = "MOVING_TO_ABDUCTION"
-                self.trigger_move_steps.emit('rotacional', int(diff), VELOCIDAD_HZ_ROTACIONAL_TERAPIA)
+                self.trigger_move_steps.emit('rotacional', diff, VELOCIDAD_HZ_ROTACIONAL_TERAPIA)
                 
             elif self.therapy_state == "MOVING_TO_ABDUCTION":
-                # Llegó a Abducción
                 self.therapy_state = "PAUSE_AT_ABDUCTION"
-                QTimer.singleShot(1500, self.execute_therapy_step)
                 
             elif self.therapy_state == "PAUSE_AT_ABDUCTION":
-                # Terminó una repetición (Ida y Vuelta)
+                # Paso 2: Regresar a ADUCCIÓN (Cerrar brazo)
+                target = self.worker.cero_terapia_rotacional
+                current = self.worker.posicion_rotacional
+                diff = target - current
+                
+                self.therapy_state = "MOVING_TO_ADDUCTION"
+                self.trigger_move_steps.emit('rotacional', diff, VELOCIDAD_HZ_ROTACIONAL_TERAPIA)
+                
+            elif self.therapy_state == "MOVING_TO_ADDUCTION":
                 self.current_rep_count += 1
                 self.rep_counter_label.setText(f"Repetición: {self.current_rep_count} de {self.current_therapy_reps}")
                 
@@ -2008,8 +1969,7 @@ class RehabilitationApp(QMainWindow):
                     self.on_movement_finished(True)
                 else:
                     self.therapy_state = "PAUSE_BEFORE_HOME_ROTATIONAL"
-                    QTimer.singleShot(1500, self.execute_therapy_step)
-                    
+
     def go_to_flexion_extension_page(self):
         self.reset_flexext_page_state()
         self.stacked_widget.setCurrentIndex(4)
