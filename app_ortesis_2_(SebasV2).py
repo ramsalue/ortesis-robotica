@@ -97,6 +97,8 @@ class HardwareController(QObject):
         self.move_steps_initial_pos = 0
         self.move_steps_target_pos = 0
         self.move_steps_direction = 0 
+
+        self.stable_count = 0
         
         # Timer de monitoreo (Loop principal del hilo)
         self.poll_timer = QTimer(self)
@@ -192,12 +194,12 @@ class HardwareController(QObject):
     @pyqtSlot()
     def run_calibration_sequence(self):
         """Inicia la secuencia de Homing (Búsqueda de cero)."""
-        if self.is_halted or self.is_calibrating:
-            return
+        if self.is_halted or self.is_calibrating: return
             
         self.is_calibrating = True
         self.calibration_step = 'rotational'
-        print("[Worker] Calibrando ROTACIONAL...")
+        self.stable_count = 0
+        print("[Worker] Calibrando rotacional...")
         self.progress_updated.emit(10)
         
         if IS_RASPBERRY_PI:
@@ -422,7 +424,8 @@ class HardwareController(QObject):
     @pyqtSlot()
     def _poll_status(self):
         """
-        Ciclo de monitoreo con LECTURA ÚNICA (Snapshot) para evitar rebotes.
+        Ciclo de monitoreo con FILTRO DE RUIDO (Debounce).
+        Exige 3 lecturas consecutivas (30ms) para validar un sensor.
         """
         # 1. Seguridad Crítica
         if self.is_halted:
@@ -431,50 +434,54 @@ class HardwareController(QObject):
             if self.is_moving_steps: self.stop_move_steps(True)
             return
 
-        # --- TOMA DE FOTO (SNAPSHOT) ---
-        # Leemos los sensores UNA sola vez y guardamos el valor en variables
-        # Usaremos estas variables 'l_out', 'r_in', etc. para TODO el resto de la función
+        # 2. Lectura de Sensores (Snapshot)
         l_out = 0; l_in = 0; r_out = 0; r_in = 0
         
         if IS_RASPBERRY_PI and self.pi:
             try:
-                l_out = self.pi.read(LIN_LIMIT_OUT_PIN) # Pin 25
-                l_in = self.pi.read(LIN_LIMIT_IN_PIN)   # Pin 8
-                r_out = self.pi.read(ROT_LIMIT_OUT_PIN) # Pin 12
-                r_in = self.pi.read(ROT_LIMIT_IN_PIN)   # Pin 7
-                
-                # Debugging visual: Si detecta algo, lo avisa
-                if l_out or l_in or r_out or r_in:
-                    print(f"!!! SENSOR !!! Modo='{self.calibration_step}' | L_OUT:{l_out} L_IN:{l_in}")
-            except:
-                pass
+                l_out = self.pi.read(LIN_LIMIT_OUT_PIN) # 25
+                l_in = self.pi.read(LIN_LIMIT_IN_PIN)   # 8
+                r_out = self.pi.read(ROT_LIMIT_OUT_PIN) # 12
+                r_in = self.pi.read(ROT_LIMIT_IN_PIN)   # 7
+            except: pass
 
-        # 2. Modo Calibración
+        # 3. Modo Calibración CON FILTRO
         if self.is_calibrating:
-            if self.calibration_step == 'rotational':
-                # USAMOS LA VARIABLE 'r_in', NO LEEMOS DE NUEVO
-                if r_in == SENSORES_NIVEL_ACTIVO:
-                    print("[Worker] Sensor ROTACIONAL detectado. Finalizando paso.")
-                    self._finish_calibration_step()
+            detected = False
             
-            elif self.calibration_step == 'linear':
-                # USAMOS LA VARIABLE 'l_out', NO LEEMOS DE NUEVO
-                if l_out == SENSORES_NIVEL_ACTIVO:
-                    print("[Worker] Sensor LINEAL detectado. Finalizando paso.")
+            if self.calibration_step == 'rotational':
+                # Si el sensor está activo, incrementamos confianza
+                if r_in == SENSORES_NIVEL_ACTIVO:
+                    self.stable_count += 1
+                else:
+                    self.stable_count = 0 # Si baja a 0, era ruido. Reiniciar.
+                
+                # SOLO si se mantiene estable 3 ciclos (30ms), actuamos
+                if self.stable_count >= 3:
+                    print("[Worker] Sensor ROTACIONAL confirmado (Estable). Finalizando paso.")
                     self._finish_calibration_step()
+                    self.stable_count = 0 # Reset para el siguiente paso
+
+            elif self.calibration_step == 'linear':
+                if l_out == SENSORES_NIVEL_ACTIVO:
+                    self.stable_count += 1
+                else:
+                    self.stable_count = 0
+                
+                if self.stable_count >= 3:
+                    print("[Worker] Sensor LINEAL confirmado (Estable). Finalizando paso.")
+                    self._finish_calibration_step()
+                    self.stable_count = 0
             return
         
-        # 3. Modo Jogging (Manual)
+        # 4. Modo Jogging (Sin filtro agresivo para respuesta rápida, o con filtro ligero)
         if self.is_jogging:
             pos_hit = False; neg_hit = False
-            
             if self.jog_motor == 'lineal':
-                # Usamos l_in / l_out
                 pos_hit = (l_in == SENSORES_NIVEL_ACTIVO)
                 neg_hit = (l_out == SENSORES_NIVEL_ACTIVO)
                 curr = self.posicion_lineal; zero = self.cero_terapia_lineal; speed = VELOCIDAD_HZ_LINEAL_JOG
             else:
-                # Usamos r_out / r_in
                 pos_hit = (r_out == SENSORES_NIVEL_ACTIVO)
                 neg_hit = (r_in == SENSORES_NIVEL_ACTIVO)
                 curr = self.posicion_rotacional; zero = self.cero_terapia_rotacional; speed = VELOCIDAD_HZ_ROTACIONAL_JOG
@@ -499,7 +506,7 @@ class HardwareController(QObject):
             self.position_updated.emit(self.jog_motor, int(self.posicion_lineal if self.jog_motor == 'lineal' else self.posicion_rotacional))
             self.limit_status_updated.emit(pos_hit, neg_hit)
 
-        # 4. Modo Terapia
+        # 5. Terapia
         if self.is_moving_steps:
             safety_stop = False
             if self.move_motor == 'lineal':
@@ -510,13 +517,12 @@ class HardwareController(QObject):
                 else:                               safety_stop = (r_in == SENSORES_NIVEL_ACTIVO)
             
             if safety_stop:
-                print(f"[Worker] ALERTA: Sensor detectado durante terapia. Parada.")
+                print(f"[Worker] Sensor detectado durante terapia. Parada.")
                 self.stop_move_steps(interrupted=True)
                 return
 
             if time.time() >= self.move_steps_end_time:
                 self.stop_move_steps(False)
-
     def cleanup(self):
         """Limpieza segura de recursos al cerrar."""
         if self.poll_timer.isActive():
