@@ -132,7 +132,7 @@ STYLESHEET = """
     
     #EmergencyMessage {
         color: #c0392b;
-        font-size: 30px;
+        font-size: 20px;
         font-weight: bold;
         background-color: white;
         border: 4px solid #c0392b;

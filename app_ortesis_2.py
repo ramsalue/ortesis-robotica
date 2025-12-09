@@ -1381,67 +1381,69 @@ class RehabilitationApp(QMainWindow):
         main_layout.addWidget(self.create_header(p, is_main=True, text="Ortesis Robotica"))
         
         content_layout = QHBoxLayout()
-        content_layout.setContentsMargins(20, 20, 20, 20)
-        content_layout.setSpacing(20)
+        content_layout.setContentsMargins(40, 20, 40, 40) # Márgenes más amplios
+        content_layout.setSpacing(30)
         
+        # --- COLUMNA IZQUIERDA: IMAGEN ---
         left_col = QVBoxLayout()
         summary_image_label = QLabel()
         summary_pixmap = QPixmap("icons/fisioterapeuta.png")
-        summary_image_label.setPixmap(summary_pixmap.scaled(QSize(200, 200), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        summary_image_label.setPixmap(summary_pixmap.scaled(QSize(250, 250), Qt.KeepAspectRatio, Qt.SmoothTransformation))
         summary_image_label.setAlignment(Qt.AlignCenter)
         
-        left_col.addStretch(1)
+        left_col.addStretch()
         left_col.addWidget(summary_image_label)
-        left_col.addStretch(3)
+        left_col.addStretch()
         content_layout.addLayout(left_col, 1) 
         
+        # --- COLUMNA CENTRAL: DATOS Y CONTROL ---
         center_col = QVBoxLayout()
         center_col.setAlignment(Qt.AlignCenter)
-        center_col.setSpacing(30) 
+        center_col.setSpacing(20) 
         
+        # 1. Título del Ejercicio (NUEVO)
+        self.therapy_title_label = QLabel("TIPO DE TERAPIA")
+        self.therapy_title_label.setObjectName("SectionTitleLabel") # Usamos estilo de título existente
+        self.therapy_title_label.setAlignment(Qt.AlignCenter)
+        
+        # 2. Cuadro de Resumen (ESTÁTICO)
         self.summary_params_label = QLabel()
         self.summary_params_label.setObjectName("SummaryBox")
-        self.summary_params_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.summary_params_label.setAlignment(Qt.AlignTop | Qt.AlignLeft) # Texto empieza arriba
         self.summary_params_label.setTextFormat(Qt.RichText)
-        self.summary_params_label.setFixedWidth(480) 
-        center_col.addWidget(self.summary_params_label, 0, Qt.AlignCenter)
+        self.summary_params_label.setFixedSize(500, 300) # <--- TAMAÑO FIJO IMPORTANTE
         
+        # 3. Botón de Acción
         self.start_stop_button = QPushButton("COMENZAR TERAPIA")
         self.start_stop_button.setObjectName("StartStopButton")
         self.start_stop_button.setFixedSize(400, 80)
         self.start_stop_button.clicked.connect(self.toggle_therapy_session)
+        
+        center_col.addStretch()
+        center_col.addWidget(self.therapy_title_label, 0, Qt.AlignCenter)
+        center_col.addWidget(self.summary_params_label, 0, Qt.AlignCenter)
+        center_col.addSpacing(20)
         center_col.addWidget(self.start_stop_button, 0, Qt.AlignCenter)
+        center_col.addStretch()
+        
         content_layout.addLayout(center_col, 2) 
         
+        # --- COLUMNA DERECHA: ESTADO Y SALIDA ---
         right_col = QVBoxLayout()
-        right_col.addSpacing(50) 
         
-        self.therapy_status_label = QLabel("REHABILITACIÓN\nEN PROCESO")
+        self.therapy_status_label = QLabel("")
         self.therapy_status_label.setObjectName("TherapyStatusLabel")
         self.therapy_status_label.setAlignment(Qt.AlignCenter)
-        
-        self.rep_counter_label = QLabel("Repetición: 0 de 0")
-        self.rep_counter_label.setObjectName("RepetitionCounterLabel")
-        self.rep_counter_label.setAlignment(Qt.AlignCenter)
-        
-        self.therapy_finished_label = QLabel("Rehabilitación finalizada.")
-        self.therapy_finished_label.setObjectName("FinishedLabel")
-        self.therapy_finished_label.setAlignment(Qt.AlignCenter)
-        
         self.therapy_status_label.hide()
-        self.rep_counter_label.hide()
-        self.therapy_finished_label.hide()
-        
-        right_col.addWidget(self.therapy_status_label)
-        right_col.addWidget(self.rep_counter_label)
-        right_col.addWidget(self.therapy_finished_label)
-        right_col.addStretch()
         
         self.summary_back_button = QPushButton("VOLVER AL MENÚ")
         self.summary_back_button.setObjectName("SecondaryButton")
         self.summary_back_button.setFixedSize(225, 60)
         self.summary_back_button.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(3))
         
+        right_col.addStretch()
+        right_col.addWidget(self.therapy_status_label)
+        right_col.addSpacing(20)
         right_col.addWidget(self.summary_back_button, 0, Qt.AlignCenter | Qt.AlignBottom)
         content_layout.addLayout(right_col, 1)
         
@@ -1810,7 +1812,7 @@ class RehabilitationApp(QMainWindow):
             pos_cm = (position - self.worker.cero_terapia_lineal) * LINEAL_CM_POR_PASO
             disp_cm = max(0.0, pos_cm)
             
-            self.flexext_jog_status_label.setText(f"Posición: {disp_cm:.2f} cm")
+            self.flexext_jog_status_label.setText(f"Posición aproximada: {disp_cm:.2f} cm")
             
             disable_ext = (pos_cm <= 0.01) or self.hw_neg_hit
             disable_flex = self.hw_pos_hit
@@ -1821,7 +1823,7 @@ class RehabilitationApp(QMainWindow):
             pos_grados = (position - self.worker.cero_terapia_rotacional) * ROTACIONAL_GRADOS_POR_PASO
             disp_deg = max(0.0, min(MAX_GRADOS_ABD, pos_grados))
             
-            self.abdadd_jog_status_label.setText(f"Posición: {disp_deg:.1f}°")
+            self.abdadd_jog_status_label.setText(f"Posición aproximada: {disp_deg:.1f}°")
             
             disable_add = (pos_grados <= 0.1) or self.hw_neg_hit
             disable_abd = (pos_grados >= MAX_GRADOS_ABD) or self.hw_pos_hit
@@ -1857,29 +1859,52 @@ class RehabilitationApp(QMainWindow):
         self.current_therapy_reps = reps
         self.current_rep_count = 0
         
-        # Preparar texto de resumen
-        details = ""
+        # Actualizar Título Superior
+        self.therapy_title_label.setText(therapy_type.upper())
+        
+        # Preparar texto base (Estático)
+        base_info = ""
         if "Flexión" in therapy_type:
-            steps = self.extension_limite_pasos # Nota: Usamos el límite guardado
+            steps = self.extension_limite_pasos
             cm = (steps - self.worker.cero_terapia_lineal) * LINEAL_CM_POR_PASO
-            details = f"<b>Rango:</b> 0 a {max(0, cm):.2f} cm<br>"
+            base_info = f"<b>Rango Configurado:</b><br>0 a {max(0, cm):.2f} cm<br><br>"
         else:
             steps = self.abduction_limite_pasos if self.abduction_limite_saved else 0
             deg = (steps - self.worker.cero_terapia_rotacional) * ROTACIONAL_GRADOS_POR_PASO
-            details = f"<b>Rango:</b> 0 a {max(0, deg):.1f}°<br>"
+            base_info = f"<b>Rango Configurado:</b><br>0 a {max(0, deg):.1f}°<br><br>"
             
-        details += f"<b>Repeticiones:</b> {reps}"
+        base_info += f"<b>Repeticiones Totales:</b> {reps}"
         
-        self.summary_params_label.setText(details)
+        # Guardamos este texto base para usarlo al actualizar el contador
+        self.summary_static_text = base_info
+        
+        # Mostrar estado inicial
+        self.update_summary_box_text()
+        
+        # Resetear UI
         self.therapy_status_label.hide()
-        self.rep_counter_label.hide()
-        self.therapy_finished_label.hide()
         self.start_stop_button.setText("COMENZAR TERAPIA")
-        self.start_stop_button.setStyleSheet(STYLESHEET) # Reset estilo
+        self.start_stop_button.setStyleSheet(STYLESHEET) 
         self.start_stop_button.setEnabled(True)
         self.summary_back_button.setEnabled(True)
         
-        self.stacked_widget.setCurrentIndex(6) # Summary Page
+        self.stacked_widget.setCurrentIndex(6)
+
+    def update_summary_box_text(self):
+        """Actualiza el cuadro de resumen combinando info estática y progreso."""
+        final_text = self.summary_static_text
+        
+        # Si la terapia está activa o terminó, agregamos el progreso
+        if self.therapy_in_progress or self.start_stop_button.text() == "REINICIAR TERAPIA":
+            progreso_html = (
+                f"<br><hr>"
+                f"<div style='color: #2c3e50; font-size: 24px; font-weight: bold; margin-top: 10px;'>"
+                f"Repetición: {self.current_rep_count} de {self.current_therapy_reps}"
+                f"</div>"
+            )
+            final_text += progreso_html
+            
+        self.summary_params_label.setText(final_text)
 
     def toggle_therapy_session(self):
         if self.therapy_in_progress:
@@ -1900,25 +1925,28 @@ class RehabilitationApp(QMainWindow):
             self.therapy_status_label.setStyleSheet("color: #2c3e50;")
             self.therapy_status_label.show()
             
-            self.rep_counter_label.setText(f"Repetición: 1 de {self.current_therapy_reps}")
-            self.rep_counter_label.show()
-            self.therapy_finished_label.hide()
+            # --- CAMBIO: Actualizar cuadro ---
+            self.update_summary_box_text() # Mostrará "Repetición 0 de X"
+            # self.rep_counter_label.show() <-- BORRAR
+            # -------------------------------
             
             # Iniciar primer movimiento
             self.execute_therapy_step()
 
     def stop_therapy_session(self, finished=False):
         self.therapy_in_progress = False
-        self.worker.stop_move_steps() # Parar motor inmediatamente
+        self.worker.stop_move_steps() 
         
         self.start_stop_button.setText("REINICIAR TERAPIA")
         self.start_stop_button.setStyleSheet(STYLESHEET)
         self.summary_back_button.setEnabled(True)
         
         if finished:
-            self.therapy_status_label.hide()
-            self.therapy_finished_label.show()
-            self.rep_counter_label.setText(f"Completado: {self.current_therapy_reps} de {self.current_therapy_reps}")
+            self.therapy_status_label.setText("¡TERAPIA FINALIZADA!")
+            self.therapy_status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+            self.therapy_status_label.show()
+            # self.rep_counter_label.setText(...) <-- BORRAR
+            self.update_summary_box_text() # Asegura que muestre el final
         else:
             self.therapy_status_label.setText("TERAPIA DETENIDA")
             self.therapy_status_label.setStyleSheet("color: #c0392b;")
@@ -1970,7 +1998,8 @@ class RehabilitationApp(QMainWindow):
                 # Llegó a flexión
                 self.current_rep_count += 1
                 print(f"DEBUG [MOVING_TO_FLEX]: Repetición {self.current_rep_count}/{self.current_therapy_reps} completada.")
-                self.rep_counter_label.setText(f"Repetición: {self.current_rep_count} de {self.current_therapy_reps}")
+                #self.rep_counter_label.setText(f"Repetición: {self.current_rep_count} de {self.current_therapy_reps}")
+                self.update_summary_box_text()       # <-- PONER ESTO
                 
                 if self.current_rep_count >= self.current_therapy_reps:
                     print("DEBUG: Rutina finalizada.")
@@ -2021,7 +2050,8 @@ class RehabilitationApp(QMainWindow):
             elif self.therapy_state == "PAUSE_AT_ABDUCTION":
                 # Terminó una repetición (Ida y Vuelta)
                 self.current_rep_count += 1
-                self.rep_counter_label.setText(f"Repetición: {self.current_rep_count} de {self.current_therapy_reps}")
+                #self.rep_counter_label.setText(f"Repetición: {self.current_rep_count} de {self.current_therapy_reps}")
+                self.update_summary_box_text()       # <-- PONER ESTO
                 
                 if self.current_rep_count >= self.current_therapy_reps:
                     self.therapy_state = "FINISHING"
@@ -2090,5 +2120,5 @@ class RehabilitationApp(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = RehabilitationApp()
-    window.showFullScreen()
+    window.show()
     sys.exit(app.exec_())
